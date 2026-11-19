@@ -1,6 +1,11 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+foreach ($entry in @('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'src', 'tests', 'migrations', 'scripts', '.vscode', '.gitignore', '.env.example', 'meme-hunter-src.tar.gz')) {
+    if (Test-Path -LiteralPath (Join-Path $root $entry)) {
+        throw "Refusing to overwrite '$entry'. The bundle is a historical snapshot; use an empty source tree."
+    }
+}
 $bundle = Join-Path $root "bundle"
 $parts = @()
 
@@ -36,10 +41,11 @@ if (-not $tar) {
     throw "The archive is verified, but 'tar' was not found. Install Windows tar or extract meme-hunter-src.tar.gz manually."
 }
 
-& $tar.Source -xzf $archive -C $root
+& $tar.Source -xkzf $archive -C $root
 if ($LASTEXITCODE -ne 0) {
     throw "tar extraction failed with exit code $LASTEXITCODE."
 }
 
-Write-Host "Meme Hunter Rust source restored successfully." -ForegroundColor Green
+Remove-Item -LiteralPath $archive
+Write-Host "Meme Hunter historical Rust source restored successfully." -ForegroundColor Green
 Write-Host "Open this folder in VS Code and run: cargo check; cargo test; cargo fmt --check"
