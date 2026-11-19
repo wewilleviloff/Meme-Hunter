@@ -10,16 +10,20 @@ permissions:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Install the project toolchain
+        run: rustup toolchain install --no-self-update
       - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all -- --check
-      - name: Compile and test
-        run: cargo test --all-targets
+      - name: Build
+        run: cargo build --locked
+      - name: Test
+        run: cargo test --locked --all-targets
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings

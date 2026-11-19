@@ -1,50 +1,46 @@
-# Meme Hunter — Rust MVP
+# Meme Hunter — Rust PAPER MVP
 
-Meme Hunter is a paper-trading-first token scanner for Robinhood Chain (chain ID 4663). The repo stores the complete starter source bundle in `bundle/`; restore it once before opening the Rust workspace.
+Meme Hunter scans new tokens on Robinhood Chain (chain ID 4663) and simulates positions. It cannot sign, submit, or broadcast swaps.
 
-## Restore the source tree (Windows / PowerShell)
+## Build and test
+
+A clean checkout contains the Rust sources. Open the checkout in VS Code with rust-analyzer. Rustup selects Rust 1.94.1 with rustfmt and Clippy from `rust-toolchain.toml` (on Windows use MSVC Rust with the Visual C++ build tools and Windows SDK).
 
 ```powershell
-git clone https://github.com/wewilleviloff/Meme-Hunter.git
-cd Meme-Hunter
-.\restore-mvp.ps1
-code .
+cargo build --locked
+cargo test --locked --all-targets
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
 ```
 
-The restore script concatenates the numbered base64 parts, verifies the SHA-256 of the archive, and extracts the Rust project into the repository root. Linux/macOS users can concatenate the `bundle/meme-hunter-src.tar.gz.b64.part*` files, decode them with `base64 -d`, verify the same SHA-256, and extract with `tar -xzf`.
-
-## Locked strategy
-
-- Robinhood Chain, chain ID `4663`
-- Paper entry: $10
-- Take profit: 2.0x
-- Stop loss: -35%
-- Minimum quote-side liquidity: $10,000
-- Conservative fail-closed screening
-- SQLite persistence
-- Crius REST + WebSocket discovery
-- Telegram controls
-- Uniswap Trading API quote adapter + Alloy EVM validation
+`bundle/` is a historical starter snapshot, not used for builds or CI. `restore-mvp.ps1` only restores it into a separate tree without existing source files.
 
 ## Run locally
 
-Requires Rust 1.94.1 (pinned in `rust-toolchain.toml`) and VS Code with rust-analyzer.
-
 ```powershell
 Copy-Item .env.example .env
-# Add CRIUS_API_KEY and optionally Telegram credentials.
-cargo check
-cargo test
-cargo fmt --check
-cargo run
+# Set CRIUS_API_KEY with the stream scope. Leave Telegram variables empty if unused.
+cargo run --locked
 ```
 
-Set up Crius API credentials with the stream scope at https://dashboard.crius.sh/. Telegram is optional.
+At startup the CLI explicitly selects the Rustls `ring` provider because its dependencies enable both `ring` and `aws-lc-rs`.
 
-## Safety boundary
+Crius discovers launches and graduations over WebSocket; REST supplies screening data and a price fallback for open positions. An entry requires a known launch time, a graduated token and sufficient quote-side liquidity, price confidence, holder distribution, realized tax samples and security data. Unknown required screening fields block entry. PAPER defaults are a $10 entry, take profit at 2×, stop loss at −35%, and minimum quote-side liquidity of $10,000. These and the position, trade, fee and risk limits are configurable in `.env.example`. Daily counts and realized PnL use UTC. SQLite stores events, positions and paper trades.
 
-**PAPER is the only supported runtime mode in this MVP.** Startup rejects LIVE mode. The Uniswap component requests and validates quotes; it does not sign, submit, or broadcast swaps. No private key is needed for Paper Trading. Keep `.env` local and never commit credentials.
+## Telegram controls (optional)
 
-This is an experimental software scaffold, not a profitable strategy or financial advice. Paper fills are estimates and do not replicate router execution, failed swaps, market impact, MEV, gas spikes, token hooks, or guaranteed exits. A stop-loss cannot guarantee execution.
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_USER_ID` together. Only the configured user can use `/help`, `/status`, `/positions`, `/pause`, `/resume`, and `/panic`. `/pause` and `/panic` pause new entries without closing open positions; price monitoring continues. The pause is in memory and is cleared by a restart. `/positions` displays the configured exit thresholds.
 
-See the full project README after restoring the source tree for architecture, filters, limitations, environment variables, and Telegram commands.
+## Read-only quote diagnostics
+
+Set `RPC_URL` and `UNISWAP_API_KEY`; `UNISWAP_API_BASE` is optional. Supply public token and swapper addresses and an exact input in base units:
+
+```powershell
+cargo run --locked -- diagnose-quote TOKEN_IN TOKEN_OUT AMOUNT_BASE_UNITS SWAPPER
+```
+
+Add an optional slippage percent (default 0.5, maximum 2). The command checks the RPC chain ID with Alloy and requests an Uniswap CLASSIC quote. It does not initialize the PAPER runtime or write to SQLite, and never requests transaction construction. Live quote availability on chain 4663 depends on the configured provider and API access.
+
+## Limitations
+
+PAPER is the only supported mode. No private key is needed. Never commit `.env` or put credentials in command arguments. WebSocket replay within a running process is limited to Crius’s replay window; recovery is not a complete historical backfill. Paper fills are estimates; they do not model execution, failed swaps, market impact, MEV, gas spikes, or guaranteed exits. This is experimental software, not financial advice.
